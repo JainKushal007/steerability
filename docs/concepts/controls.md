@@ -40,7 +40,8 @@ Some examples of input control methods are few-shot prompting, reasoning guidanc
 self-consistency), automatic prompting methods, and prompt routing. The toolkit implements:
 
 - `FewShot` ([API reference](../reference/algorithms/input_control/few_shot.md), [notebook](../examples/notebooks/algorithms/few_shot.ipynb))
-    - *Description*: pool- or runtime-supplied few-shot examples with a pluggable selector.
+    - *Description*: pool- or runtime-supplied few-shot examples with a pluggable selector. On chat input the
+      rendered example block merges into the leading system message (appended by default, via `system_mode`).
     - *Backends*: HF, vLLM.
 - `PRewrite` ([API reference](../reference/algorithms/input_control/prewrite.md), [notebook](../examples/notebooks/algorithms/prewrite.ipynb))
     - *Description*: RL-trained instruction rewriter ([Kong et al. 2024](https://arxiv.org/abs/2401.08189)) supporting a greedy "inference" strategy and a best-of-K "search" strategy. The rewriter can optionally be trained with GRPO using a scorer-in-the-loop reward (apply the rewrite with the frozen task model over a dev set and score each response with a per-row `SampleScorer`, the paper's reward).
@@ -102,7 +103,7 @@ around existing libraries. The toolkit implements:
     - *Description*: model merging via MergeKit[@goddard-etal-2024-arcees], combining multiple checkpoints with strategies such as linear interpolation, SLERP, and TIES from a YAML/dict config.
     - *Backends*: HF, vLLM (the merged checkpoint is served).
 - `TRL` ([API reference](../reference/algorithms/structural_control/trl_wrapper.md), [notebook](../examples/notebooks/algorithms/wrappers/trl.ipynb))
-    - *Description*: weight-level training via Hugging Face TRL[@vonwerra2022trl], exposing SFT, DPO, APO, PPO, and GRPO trainers, with optional LoRA/PEFT and a post-training merge. Since `training_args` is forwarded verbatim to the installed TRL config, a key the config does not declare raises an error at control construction.
+    - *Description*: weight-level training via Hugging Face TRL[@vonwerra2022trl], exposing SFT, DPO, APO, PPO, and GRPO trainers, with optional LoRA/PEFT and a post-training merge. Since `training_args` is forwarded verbatim to the installed TRL config, a key the config does not declare raises an error at control construction. A `target_modules` list of module-name suffixes is scoped at steer time to the decoder stack of the resolved model layout, so a multimodal wrapper's vision and audio towers are not adapted; a regex targets other modules.
     - *Backends*: HF, vLLM (serves the steer-time artifact, a checkpoint or LoRA adapter, and requires a configured output directory).
 
 
@@ -183,8 +184,9 @@ models (Llama, Mistral, Qwen, and Gemma), for composite multimodal wrappers load
 (Qwen3.5 and Qwen3-Next) are supported by the residual-stream controls and by hidden-state capture, while controls that
 act on attention (`PASTA` and o_proj-site interventions) are restricted to the attention layers, and `ITI` does not
 support them. A multimodal checkpoint is steered on its text decoder under text-only prompting, and images and audio
-are out of scope. A state control listed after an unmerged LoRA adapter steers the adapted model. For an architecture
-not on this list, register a detector with `register_layout_detector` (from `steerability.algorithms.core.internals`).
+are out of scope. The LoRA adapters the TRL wrappers train attach to that decoder as well. A state control listed after
+an unmerged LoRA adapter steers the adapted model. For an architecture not on this list, register a detector with
+`register_layout_detector` (from `steerability.algorithms.core.internals`).
 
 
 
@@ -258,7 +260,7 @@ and the following decoding drivers:
     - *Description*: the config-first generic over the segment shape (propose → score → keep → iterate, with best-of-N defaults). Best-of-N, self-consistency, blockwise controlled decoding, and DeAL are assignments of its config.
     - *Backends*: HF, vLLM with `propose_mode="sample"` (beam proposals are HF-only).
 - `PhasedDecoding` ([API reference](../reference/algorithms/output_control/phased_decoding.md), [notebook](../examples/notebooks/algorithms/generics/phased_decoding.ipynb))
-    - *Description*: the config-first generic over the phase shape (forced / generated segments via a declarative plan grammar). Budget forcing, response prefill, and thinking intervention[@wu2025effectively] are assignments of its config. A `generate` phase ends at its `until` substring, any token in `until_token_ids`, or its `budget`, whichever first.
+    - *Description*: the config-first generic over the phase shape (forced / generated segments via a declarative plan grammar). Budget forcing, response prefill, and thinking intervention[@wu2025effectively] are assignments of its config. A `generate` phase ends at its `until` substring, any token in `until_token_ids`, or its `budget`, whichever first. Note that under a chat template that opens the reasoning block in its generation prompt (the case `ProviderOptions.reasoning_opened_at_start` describes), a plan whose first phase is `fixed` must splice the reasoning close tag before the answer text. Without it the evaluation provider reads the fixed text as unclosed reasoning and grades an empty answer.
     - *Backends*: HF, vLLM.
 
 Some decoding strategies are native to Hugging Face's `generate` and need no dedicated control. They flow through the
